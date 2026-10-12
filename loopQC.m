@@ -59,6 +59,8 @@ function loopQC(masterFolder, params)
         sr = zeros(size(D)); sr(im_skel) = D(im_skel);
         skel_cap = bwareaopen(im_skel & sr > 0 & ...
                               sr <= p.radiusThreshUM/pxUM, p.minBranchPix, 8);
+                fprintf('  %s: pxUM %.3f  threshPix %.2f  skel %d -> cap %d px\n', ...
+                uS{k}, pxUM, p.radiusThreshUM/pxUM, nnz(im_skel), nnz(skel_cap));
 
         % ---- enclosed regions of the skeleton ----
         skel_fix = bwmorph(imclose(skel_cap, strel('disk', p.gapPix)), 'thin', Inf);
@@ -100,14 +102,14 @@ function loopQC(masterFolder, params)
         B(keptMask) = 0.95 - 0.75*tint(keptMask);
         R(rejMask)  = 0.95; G(rejMask) = 0.10; B(rejMask) = 0.10;
         rgb = cat(3,R,G,B);
-        fh = figure('Color','w','Visible','on','Position',[80 80 1400 1200]);
+        fh = figure('Color','w','Position',[80 80 1400 1200]);
         imshow(rgb);
         title(sprintf('%s   %d loops kept, %d rejected (%.0f%% kept)', ...
               uS{k}, nnz(keep), nnz(~keep), ...
               100*nnz(keep)/max(numel(A),1)), 'FontSize', 14);
         exportgraphics(fh, fullfile(p.saveDir, ...
             sprintf('loopQC_%s.jpg', uS{k})), 'Resolution', 200);
-        close(fh);
+       % close(fh);
        
     end
 

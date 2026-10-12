@@ -30,10 +30,12 @@ function T = radialTopology(masterFolder, params)
 %   capLen_mm, tissueArea_mm2, coverage
 
     if nargin < 2, params = struct(); end
-    p.basePxUM       = getf(params, 'basePxUM',       3/1.4491);
+    p.basePxUM       = getf(params, 'basePxUM',       2/1.4491);
     p.nBins          = getf(params, 'nBins',          6);
-    p.radiusThreshUM = getf(params, 'radiusThreshUM', 17.1);
+    p.radiusThreshUM = getf(params, 'radiusThreshUM', 9);
     p.minBranchPix   = getf(params, 'minBranchPix',   8);
+    p.gapPix = getf(params, 'gapPix', 3);
+    p.minLoopUM2 = getf(params, 'minLoopUM2', 12);
 
     vascDir = fullfile(masterFolder, 'VasculatureNumbers');
     maskDir = fullfile(masterFolder, 'Masks');
@@ -88,11 +90,14 @@ function T = radialTopology(masterFolder, params)
             [brLen_px, brCentroid] = branchLengths(L);
             brLen_um = brLen_px * pxUM;
 
-            % enclosed loops of the skeleton, as objects
-            % for one rat image, with skel_cap already built
-
-            loopMask = imfill(skel_cap, 'holes') & ~skel_cap;   % 4-conn, as originally
-            minLoopPix = round(100 / pxUM^2);
+                        % Enclosed loops of the capillary skeleton.
+            % Close one-pixel breaks first, or genuine loops leak open and
+            % go uncounted; then drop anything too small to be a real mesh
+            % space, which would otherwise be pixel-grid staircase artifacts.
+            skel_fix = bwmorph(imclose(skel_cap, strel('disk', p.gapPix)), ...
+                               'thin', Inf);
+            loopMask = imfill(skel_fix, 'holes') & ~skel_fix;
+            minLoopPix = round(p.minLoopUM2 / pxUM^2);
             loopMask = bwareaopen(loopMask, max(minLoopPix, 2), 8);
             ccLoop   = bwconncomp(loopMask, 8);
             if ccLoop.NumObjects > 0
@@ -111,7 +116,6 @@ function T = radialTopology(masterFolder, params)
             edges    = linspace(min(dHull), max(dHull)+eps, p.nBins+1);
 
             Dout     = bwdist(im_clean);       % tissue -> nearest vessel
-            inTissue = im_hull & ~im_clean;
 
               
 
@@ -151,6 +155,11 @@ function T = radialTopology(masterFolder, params)
                 r.nLoops            = nLoopsBand;
                 r.loopDensity_mm2   = nLoopsBand / max(area_mm2, eps);
                 r.medianLoopArea_um2 = safe(@median, la);
+                r.meanLoopArea_um2 = safe(@mean, la);
+                r.iqrLoopArea_um2  = safe(@iqr,  la);
+                r.p95LoopArea_um2  = safe(@(x) prctile(x,95), la);
+                r.cvLoopArea       = safe(@std, la) / max(safe(@mean, la), eps);
+                r.loopAreaFrac     = sum(la) / 1e6 / max(area_mm2, eps);
 
                 r.nBranches          = numel(bl);
                 r.meanBranchLen_um   = safe(@mean,   bl);
@@ -163,12 +172,7 @@ function T = radialTopology(masterFolder, params)
                 r.endpointJunctionRatio = nE / max(nJ, 1);
 
                 r.capLen_mm = sum(bl) / 1e3;
-                ro = radialOrientation(skel_cap, apexXY, band, pxUM, 20);
-                r.radialAlignment     = ro.radialAlignment;
-                r.globalCoherence     = ro.globalCoherence;
-                r.meanRadialAngle_deg = ro.meanRadialAngle_deg;
-                r.nOriented           = ro.nUsed;
-
+             
                 rows = [rows; r]; %#ok<AGROW>
             end
 
